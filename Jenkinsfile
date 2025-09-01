@@ -1,83 +1,80 @@
-pipeline {
-    agent {
-        label "master"
-    }
-    tools {
-        // Note: this should match with the tool name configured in your jenkins instance (JENKINS_URL/configureTools/)
-        maven "MVN_HOME"
-        
-    }
-	 environment {
-        // This can be nexus3 or nexus2
-        NEXUS_VERSION = "nexus3"
-        // This can be http or https
-        NEXUS_PROTOCOL = "http"
-        // Where your Nexus is running
-        NEXUS_URL = "18.216.151.197:8081/"
-        // Repository where we will upload the artifact
-        NEXUS_REPOSITORY = "soanrqube"
-        // Jenkins credential id to authenticate to Nexus OSS
-        NEXUS_CREDENTIAL_ID = "nexus_keygen"
-    }
-    stages {
-        stage('Git Clone') {
-    checkout([$class: 'GitSCM',
-        branches: [[name: '*/feature-1.1']],
-        userRemoteConfigs: [[url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git']]
-    ])
-}
+node {
+    // Define Maven tool (must match name in Global Tool Config)
+    def mvnHome = tool name: 'MVN_HOME', type: 'maven'
 
+    // Define servers/credentials
+    def sonarqubeServer = 'MySonarQube'                // must match Configure System > SonarQube
+    def nexusUrl = "18.216.151.197:8081"
+    def nexusRepo = "maven-releases"                   // adjust if different
+    def nexusCred = "nexus_keygen"                     // Jenkins credential ID for Nexus
+    def tomcatServer = "http://<TOMCAT_SERVER>:8080/manager/text"
+    def tomcatCred = "tomcat-manager-creds"            // Jenkins credential ID for Tomcat
+    def slackChannel = "#devops-alerts"                // Slack channel configured in Jenkins
+
+    try {
+        stage('Git Clone') {
+            checkout([$class: 'GitSCM',
+                branches: [[name: '*/feature-1.1']],
+                userRemoteConfigs: [[url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git']]
+            ])
         }
-        stage("mvn build") {
-            steps {
-                script {
-                    // If you are using Windows then you should use "bat" step
-                    // Since unit testing is out of the scope we skip them
-                    sh 'mvn -Dmaven.test.failure.ignore=true install'
-                }
+
+        stage('SonarQube Analysis') {
+            withSonarQubeEnv(sonarqubeServer) {
+                sh "${mvnHome}/bin/mvn sonar:sonar"
+            }
+            // Optional: wait for quality gate
+            // timeout(time: 10, unit: 'MINUTES') {
+            //     def qg = waitForQualityGate()
+            //     if (qg.status != 'OK') {
+            //         error "Pipeline aborted due to quality gate failure: ${qg.status}"
+            //     }
+            // }
+        }
+
+        stage('Maven Build') {
+            sh "${mvnHome}/bin/mvn clean package -DskipTests"
+        }
+
+        stage('Publish to Nexus') {
+            // ⚠️ This will fail if Nexus isn’t ready, comment out if not configured yet
+            def pom = readMavenPom file: "pom.xml"
+            def filesByGlob = findFiles(glob: "target/*.${pom.packaging}")
+            if (filesByGlob.length == 0) {
+                error "No artifact found in target/"
+            }
+            def artifactPath = filesByGlob[0].path
+
+            nexusArtifactUploader(
+                nexusVersion: 'nexus3',
+                protocol: 'http',
+                nexusUrl: nexusUrl,
+                groupId: pom.groupId,
+                version: pom.version,
+                repository: nexusRepo,
+                credentialsId: nexusCred,
+                artifacts: [
+                    [artifactId: pom.artifactId, classifier: '', file: artifactPath, type: pom.packaging],
+                    [artifactId: pom.artifactId, classifier: '', file: "pom.xml", type: "pom"]
+                ]
+            )
+        }
+
+        stage('Deploy on Tomcat') {
+            withCredentials([usernamePassword(credentialsId: tomcatCred, usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
+                def warFile = "target/sabear_simplecutomerapp.war"
+                sh """
+                    curl -u ${TOMCAT_USER}:${TOMCAT_PASS} --upload-file ${warFile} "${tomcatServer}/deploy?path=/sabear_simplecutomerapp&update=true"
+                """
             }
         }
-        stage("publish to nexus") {
-            steps {
-                script {
-                    // Read POM xml file using 'readMavenPom' step , this step 'readMavenPom' is included in: https://plugins.jenkins.io/pipeline-utility-steps
-                    pom = readMavenPom file: "pom.xml";
-                    // Find built artifact under target folder
-                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
-                    // Print some info from the artifact found
-                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
-                    // Extract the path from the File found
-                    artifactPath = filesByGlob[0].path;
-                    // Assign to a boolean response verifying If the artifact name exists
-                    artifactExists = fileExists artifactPath;
-                    if(artifactExists) {
-                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version ${pom.version}";
-                        nexusArtifactUploader(
-                            nexusVersion: NEXUS_VERSION,
-                            protocol: NEXUS_PROTOCOL,
-                            nexusUrl: NEXUS_URL,
-			    groupId: pom.groupId,
-                            version: pom.version,
-                            repository: NEXUS_REPOSITORY,
-                            credentialsId: NEXUS_CREDENTIAL_ID,
-                            artifacts: [
-                                // Artifact generated such as .jar, .ear and .war files.
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: artifactPath,
-                                type: pom.packaging],
-                                // Lets upload the pom.xml file for additional information for Transitive dependencies
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: "pom.xml",
-                                type: "pom"]
-                            ]
-                        );
-                    } else {
-                        error "*** File: ${artifactPath}, could not be found";
-                    }
-                }
-            }
+
+        stage('Slack Notification') {
+            slackSend(channel: slackChannel, color: 'good', message: "✅ Build & Deploy successful for feature-1.1 branch")
         }
+
+    } catch (err) {
+        slackSend(channel: slackChannel, color: 'danger', message: "❌ Build failed for feature-1.1 branch: ${err}")
+        throw err
     }
 }
