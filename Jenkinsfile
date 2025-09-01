@@ -20,13 +20,13 @@ pipeline {
         NEXUS_CREDENTIAL_ID = "nexus_keygen"
     }
     stages {
-        stage("clone code") {
-            steps {
-                script {
-                    // Let's clone the source
-                    git 'https://github.com/betawins/sabear_simplecutomerapp.git';
-                }
-            }
+        stage('Git Clone') {
+    checkout([$class: 'GitSCM',
+        branches: [[name: '*/feature-1.1']],
+        userRemoteConfigs: [[url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git']]
+    ])
+}
+
         }
         stage("mvn build") {
             steps {
