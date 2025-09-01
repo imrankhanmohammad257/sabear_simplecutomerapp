@@ -32,21 +32,22 @@ pipeline {
         }
 
         stage("SonarQube Analysis") {
-            steps {
-                withSonarQubeEnv('sonarqube_server') {
-                    sh '''
-                        $SCANNER_HOME/bin/sonar-scanner \
-                          -Dsonar.projectKey=Ncodeit \
-                          -Dsonar.projectName=Ncodeit \
-                          -Dsonar.projectVersion=2.0 \
-                          -Dsonar.sources=$WORKSPACE/src \
-                          -Dsonar.java.binaries=$WORKSPACE/target/classes \
-                          -Dsonar.junit.reportsPath=$WORKSPACE/target/surefire-reports \
-                          -Dsonar.jacoco.reportPath=$WORKSPACE/target/jacoco.exec
-                    '''
-                }
-            }
+    steps {
+        withSonarQubeEnv('sonarqube_server') {
+            sh '''
+                $SCANNER_HOME/bin/sonar-scanner \
+                  -Dsonar.projectKey=Ncodeit \
+                  -Dsonar.projectName=Ncodeit \
+                  -Dsonar.projectVersion=2.0 \
+                  -Dsonar.sources=$WORKSPACE/src \
+                  -Dsonar.java.binaries=$WORKSPACE/target/SimpleCustomerApp-28-SNAPSHOT/WEB-INF/classes \
+                  -Dsonar.junit.reportsPath=$WORKSPACE/target/surefire-reports \
+                  -Dsonar.jacoco.reportPath=$WORKSPACE/target/jacoco.exec
+            '''
         }
+    }
+}
+
 
         stage("Quality Gate") {
             steps {
