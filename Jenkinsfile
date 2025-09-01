@@ -31,36 +31,19 @@ pipeline {
             }
         }
 
-        stage("SonarQube Analysis") {
-            steps {
-                script {
-                    withSonarQubeEnv('sonarqube_server') {
-                        if (fileExists("$WORKSPACE/target/classes")) {
-                            echo "✅ Found compiled classes, running Sonar with binaries"
-                            sh '''
-                                $SCANNER_HOME/bin/sonar-scanner \
-                                  -Dsonar.projectKey=Ncodeit \
-                                  -Dsonar.projectName=Ncodeit \
-                                  -Dsonar.projectVersion=2.0 \
-                                  -Dsonar.sources=$WORKSPACE/src \
-                                  -Dsonar.java.binaries=$WORKSPACE/target/classes \
-                                  -Dsonar.junit.reportsPath=$WORKSPACE/target/surefire-reports \
-                                  -Dsonar.jacoco.reportPath=$WORKSPACE/target/jacoco.exec
-                            '''
-                        } else {
-                            echo "⚠️ No compiled classes found, running Sonar without binaries"
-                            sh '''
-                                $SCANNER_HOME/bin/sonar-scanner \
-                                  -Dsonar.projectKey=Ncodeit \
-                                  -Dsonar.projectName=Ncodeit \
-                                  -Dsonar.projectVersion=2.0 \
-                                  -Dsonar.sources=$WORKSPACE/src
-                            '''
-                        }
-                    }
-                }
-            }
+       stage("SonarQube Analysis") {
+    steps {
+        withSonarQubeEnv('sonarqube_server') {
+            sh '''
+                mvn sonar:sonar \
+                  -Dsonar.projectKey=Ncodeit \
+                  -Dsonar.projectName=Ncodeit \
+                  -Dsonar.projectVersion=2.0
+            '''
         }
+    }
+}
+
 
         stage("Publish to Nexus") {
             steps {
