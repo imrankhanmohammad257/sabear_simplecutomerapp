@@ -8,11 +8,11 @@ pipeline {
 
     environment {
         // Nexus details
-        NEXUS_VERSION      = "nexus3"
-        NEXUS_PROTOCOL     = "http"
-        NEXUS_URL          = "18.221.189.193:8081"
-        NEXUS_REPOSITORY   = "sonarqube"
-        NEXUS_CREDENTIAL_ID= "nexus_keygen"
+        NEXUS_VERSION       = "nexus3"
+        NEXUS_PROTOCOL      = "http"
+        NEXUS_URL           = "18.221.189.193:8081"
+        NEXUS_REPOSITORY    = "sonarqube"
+        NEXUS_CREDENTIAL_ID = "nexus_keygen"
 
         // SonarQube Scanner (configured in Jenkins → Tools)
         SCANNER_HOME = tool 'sonar_scanner'
@@ -33,17 +33,31 @@ pipeline {
 
         stage("SonarQube Analysis") {
             steps {
-                withSonarQubeEnv('sonarqube_server') {
-                    sh '''
-                        $SCANNER_HOME/bin/sonar-scanner \
-                          -Dsonar.projectKey=Ncodeit \
-                          -Dsonar.projectName=Ncodeit \
-                          -Dsonar.projectVersion=2.0 \
-                          -Dsonar.sources=$WORKSPACE/src \
-                          -Dsonar.java.binaries=$WORKSPACE/target/classes \
-                          -Dsonar.junit.reportsPath=$WORKSPACE/target/surefire-reports \
-                          -Dsonar.jacoco.reportPath=$WORKSPACE/target/jacoco.exec
-                    '''
+                script {
+                    withSonarQubeEnv('sonarqube_server') {
+                        if (fileExists("$WORKSPACE/target/classes")) {
+                            echo "✅ Found compiled classes, running Sonar with binaries"
+                            sh '''
+                                $SCANNER_HOME/bin/sonar-scanner \
+                                  -Dsonar.projectKey=Ncodeit \
+                                  -Dsonar.projectName=Ncodeit \
+                                  -Dsonar.projectVersion=2.0 \
+                                  -Dsonar.sources=$WORKSPACE/src \
+                                  -Dsonar.java.binaries=$WORKSPACE/target/classes \
+                                  -Dsonar.junit.reportsPath=$WORKSPACE/target/surefire-reports \
+                                  -Dsonar.jacoco.reportPath=$WORKSPACE/target/jacoco.exec
+                            '''
+                        } else {
+                            echo "⚠️ No compiled classes found, running Sonar without binaries"
+                            sh '''
+                                $SCANNER_HOME/bin/sonar-scanner \
+                                  -Dsonar.projectKey=Ncodeit \
+                                  -Dsonar.projectName=Ncodeit \
+                                  -Dsonar.projectVersion=2.0 \
+                                  -Dsonar.sources=$WORKSPACE/src
+                            '''
+                        }
+                    }
                 }
             }
         }
