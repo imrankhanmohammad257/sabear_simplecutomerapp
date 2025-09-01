@@ -1,4 +1,4 @@
-node {
+node('') {
     // Define Maven tool (must match name in Global Tool Config)
     def mvnHome = tool name: 'MVN_HOME', type: 'maven'
 
@@ -23,13 +23,6 @@ node {
             withSonarQubeEnv(sonarqubeServer) {
                 sh "${mvnHome}/bin/mvn sonar:sonar"
             }
-            // Optional: wait for quality gate
-            // timeout(time: 10, unit: 'MINUTES') {
-            //     def qg = waitForQualityGate()
-            //     if (qg.status != 'OK') {
-            //         error "Pipeline aborted due to quality gate failure: ${qg.status}"
-            //     }
-            // }
         }
 
         stage('Maven Build') {
@@ -37,7 +30,7 @@ node {
         }
 
         stage('Publish to Nexus') {
-            // ⚠️ This will fail if Nexus isn’t ready, comment out if not configured yet
+            // ⚠️ Comment out this block if Nexus isn’t ready
             def pom = readMavenPom file: "pom.xml"
             def filesByGlob = findFiles(glob: "target/*.${pom.packaging}")
             if (filesByGlob.length == 0) {
