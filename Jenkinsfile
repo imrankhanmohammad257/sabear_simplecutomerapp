@@ -15,7 +15,7 @@ node('master') {
         stage('Git Clone') {
             checkout([$class: 'GitSCM',
                 branches: [[name: '*/feature-1.1']],
-                userRemoteConfigs: [[url: 'https://github.com/betawins/sabear_simplecutomerapp.git']]
+                userRemoteConfigs: [[url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git']]
             ])
         }
 
