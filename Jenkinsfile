@@ -10,8 +10,8 @@ pipeline {
         // Nexus details
         NEXUS_VERSION       = "nexus3"
         NEXUS_PROTOCOL      = "http"
-        NEXUS_URL           = "18.221.189.193:8081"
-        NEXUS_REPOSITORY    = "sonarqube"
+        NEXUS_URL           = "18.221.189.193:8081"   // Replace with your Nexus EC2 public/private IP
+        NEXUS_REPOSITORY    = "maven-releases"       // Use the correct repo (not sonarqube!)
         NEXUS_CREDENTIAL_ID = "nexus_keygen"
 
         // SonarQube Scanner (configured in Jenkins → Tools)
@@ -31,19 +31,30 @@ pipeline {
             }
         }
 
-       stage("SonarQube Analysis") {
-    steps {
-        withSonarQubeEnv('sonarqube_server') {
-            sh '''
-                mvn sonar:sonar \
-                  -Dsonar.projectKey=Ncodeit \
-                  -Dsonar.projectName=Ncodeit \
-                  -Dsonar.projectVersion=2.0
-            '''
+        stage("SonarQube Analysis") {
+            steps {
+                withSonarQubeEnv('sonarqube_server') {
+                    sh '''
+                        $SCANNER_HOME/bin/sonar-scanner \
+                          -Dsonar.projectKey=Ncodeit \
+                          -Dsonar.projectName=Ncodeit \
+                          -Dsonar.projectVersion=2.0 \
+                          -Dsonar.sources=$WORKSPACE/src \
+                          -Dsonar.java.binaries=$WORKSPACE/target/classes \
+                          -Dsonar.junit.reportsPath=$WORKSPACE/target/surefire-reports \
+                          -Dsonar.jacoco.reportPath=$WORKSPACE/target/jacoco.exec
+                    '''
+                }
+            }
         }
-    }
-}
 
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 1, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
 
         stage("Publish to Nexus") {
             steps {
@@ -56,7 +67,7 @@ pipeline {
                     }
 
                     def artifactPath = filesByGlob[0].path
-                    echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version: ${pom.version}"
+                    echo "*** Uploading artifact: ${pom.groupId}:${pom.artifactId}:${pom.version} (${artifactPath})"
 
                     nexusArtifactUploader(
                         nexusVersion: NEXUS_VERSION,
