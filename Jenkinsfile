@@ -36,7 +36,7 @@ node {
             sh '''
             curl -u $TOMCAT_USER:$TOMCAT_PASS \
                  -T target/*.war \
-                 "http://54.145.142.96:8080/manager/text/deploy?path=/customerapp&update=true"
+                 "http://54.87.222.232:8080/manager/text/deploy?path=/customerapp&update=true"
             '''
         }
     }
