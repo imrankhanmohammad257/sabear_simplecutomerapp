@@ -35,21 +35,26 @@ node {
 stage('Deploy to Tomcat') {
     withCredentials([usernamePassword(credentialsId: 'tomcat-credentials', usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
         sh '''
+        set -e
+
         WAR_FILE=$(ls target/*.war | head -n 1)
 
+        echo "WAR file to deploy: $WAR_FILE"
+
         echo "Undeploying old app..."
-        curl -s -o /dev/null -w "%{http_code}" -u $TOMCAT_USER:$TOMCAT_PASS \
+        curl -s -o /dev/null -w "%{http_code}\\n" -u $TOMCAT_USER:$TOMCAT_PASS \
             "http://54.87.222.232:8080/manager/text/undeploy?path=/customerapp"
 
-        echo "Deploying new WAR: $WAR_FILE"
-        curl -s -o /dev/null -w "%{http_code}" -u $TOMCAT_USER:$TOMCAT_PASS \
-            -T $WAR_FILE \
+        echo "Deploying new WAR..."
+        curl -s -o /dev/null -w "%{http_code}\\n" -u $TOMCAT_USER:$TOMCAT_PASS \
+            -T "$WAR_FILE" \
             "http://54.87.222.232:8080/manager/text/deploy?path=/customerapp&update=true"
 
         echo "Deployment completed."
         '''
     }
 }
+
 
 
 
