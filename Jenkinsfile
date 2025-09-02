@@ -3,7 +3,7 @@ pipeline {
     stages {
         stage('Checkout SCM') {
             steps {
-                git url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git', branch: 'main'
+                git url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git', branch: 'feature-1.1'
             }
         }
         stage('Build') {
