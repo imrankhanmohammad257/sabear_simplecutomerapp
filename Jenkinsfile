@@ -1,83 +1,43 @@
-pipeline {
-    agent any
-
-    environment {
-        NEXUS_CRED = 'nexus-creds'
-        TOMCAT_CRED = 'tomcat-credentials'
+node {
+    stage('Git Clone') {
+        git branch: 'feature-1.1',
+            url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git'
     }
 
-    stages {
-        stage('Checkout SCM') {
-            steps {
-                git url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git', branch: 'feature-1.1'
-            }
+    stage('SonarQube Analysis') {
+        withSonarQubeEnv('SonarQube') {
+            sh 'mvn sonar:sonar'
         }
+    }
 
-        stage('Build') {
-            steps {
-                tool name: 'Maven-3.8.4', type: 'maven'
-                sh 'mvn clean package -DskipTests'
-            }
-        }
+    stage('Maven Compilation') {
+        def mvnHome = tool name: 'Maven-3.8.4', type: 'maven'
+        sh "${mvnHome}/bin/mvn clean compile"
+    }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn sonar:sonar'
-                }
-            }
-        }
-
-        stage('Deploy to Nexus') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: "${NEXUS_CRED}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                    sh '''
-                    mvn deploy -DskipTests \
-                        -Dnexus.username=$NEXUS_USER \
-                        -Dnexus.password=$NEXUS_PASS \
-                        --settings /var/lib/jenkins/.m2/settings.xml
-                    '''
-                }
-            }
-        }
-
-stage('Deploy to Tomcat') {
-    steps {
-        withCredentials([usernamePassword(credentialsId: "${TOMCAT_CRED}", usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
+    stage('Deploy to Nexus') {
+        withCredentials([usernamePassword(credentialsId: 'nexus-creds', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
             sh '''
-            WAR_FILE=$(ls target/*.war | head -n 1)
-            echo "Deploying $WAR_FILE to Tomcat..."
-            curl -u $TOMCAT_USER:$TOMCAT_PASS \
-                 -T $WAR_FILE \
-                 http://54.145.142.96:8080/manager/text/deploy?path=/simplecustomerapp&update=true
+            mvn clean deploy -DskipTests --settings /var/lib/jenkins/.m2/settings.xml
             '''
         }
     }
-}
 
-
-        
-        stage('Slack Notification') {
-            steps {
-                slackSend(
-                    channel: '#jenkins-integration',
-                    color: 'good',
-                    message: "Hi Team, Jenkins pipeline for jenkins-04 task 2 *SIMPLE CUSTOMER APP* has finished successfully! ✅\nDeployed by: Imran Khan"
-                )
-            }
-        }
+    stage('Slack Notification') {
+        slackSend(
+            channel: '#jenkins-integration',
+            color: 'good',
+            message: "Jenkins Scripted Pipeline job for *sabear_simplecutomerapp (feature-1.1)* finished successfully! ✅"
+        )
     }
 
-    post {
-        always {
-            echo 'Pipeline finished'
-        }
-        failure {
-            slackSend(
-                channel: '#jenkins-integration',
-                color: 'danger',
-                message: "⚠️ Jenkins pipeline for *hiring-app* failed! Please check."
-            )
+    stage('Deploy to Tomcat') {
+        withCredentials([usernamePassword(credentialsId: 'tomcat-credentials', usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
+            sh '''
+            curl -u $TOMCAT_USER:$TOMCAT_PASS \
+                 -T target/*.war \
+                 "http://54.145.142.96:8080/manager/text/deploy?path=/customerapp&update=true"
+            '''
         }
     }
 }
