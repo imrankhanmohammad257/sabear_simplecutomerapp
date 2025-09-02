@@ -1,73 +1,85 @@
-node('') {
-    // Define Maven tool (must match name in Global Tool Config)
-    def mvnHome = tool name: 'MVN_HOME', type: 'maven'
+pipeline {
+    agent any
 
-    // Define servers/credentials
-    def sonarqubeServer = 'MySonarQube'                // must match Configure System > SonarQube
-    def nexusUrl = "18.216.151.197:8081"
-    def nexusRepo = "maven-releases"                   // adjust if different
-    def nexusCred = "nexus_keygen"                     // Jenkins credential ID for Nexus
-    def tomcatServer = "http://<TOMCAT_SERVER>:8080/manager/text"
-    def tomcatCred = "tomcat-manager-creds"            // Jenkins credential ID for Tomcat
-    def slackChannel = "#devops-alerts"                // Slack channel configured in Jenkins
+    environment {
+        NEXUS_CRED = 'nexus-creds'
+        TOMCAT_CRED = 'tomcat-credentials'
+    }
 
-    try {
-        stage('Git Clone') {
-            checkout([$class: 'GitSCM',
-                branches: [[name: '*/feature-1.1']],
-                userRemoteConfigs: [[url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git']]
-            ])
+    stages {
+        stage('Checkout SCM') {
+            steps {
+                git url: 'https://github.com/imrankhanmohammad257/sabear_simplecutomerapp.git', branch: 'feature-1.1'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                tool name: 'Maven-3.8.4', type: 'maven'
+                sh 'mvn clean package -DskipTests'
+            }
         }
 
         stage('SonarQube Analysis') {
-            withSonarQubeEnv(sonarqubeServer) {
-                sh "${mvnHome}/bin/mvn sonar:sonar"
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh 'mvn sonar:sonar'
+                }
             }
         }
 
-        stage('Maven Build') {
-            sh "${mvnHome}/bin/mvn clean package -DskipTests"
-        }
-
-        stage('Publish to Nexus') {
-            // ⚠️ Comment out this block if Nexus isn’t ready
-            def pom = readMavenPom file: "pom.xml"
-            def filesByGlob = findFiles(glob: "target/*.${pom.packaging}")
-            if (filesByGlob.length == 0) {
-                error "No artifact found in target/"
+        stage('Deploy to Nexus') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${NEXUS_CRED}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                    sh '''
+                    mvn deploy -DskipTests \
+                        -Dnexus.username=$NEXUS_USER \
+                        -Dnexus.password=$NEXUS_PASS \
+                        --settings /var/lib/jenkins/.m2/settings.xml
+                    '''
+                }
             }
-            def artifactPath = filesByGlob[0].path
-
-            nexusArtifactUploader(
-                nexusVersion: 'nexus3',
-                protocol: 'http',
-                nexusUrl: nexusUrl,
-                groupId: pom.groupId,
-                version: pom.version,
-                repository: nexusRepo,
-                credentialsId: nexusCred,
-                artifacts: [
-                    [artifactId: pom.artifactId, classifier: '', file: artifactPath, type: pom.packaging],
-                    [artifactId: pom.artifactId, classifier: '', file: "pom.xml", type: "pom"]
-                ]
-            )
         }
 
-        stage('Deploy on Tomcat') {
-            withCredentials([usernamePassword(credentialsId: tomcatCred, usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
-                def warFile = "target/sabear_simplecutomerapp.war"
-                sh """
-                    curl -u ${TOMCAT_USER}:${TOMCAT_PASS} --upload-file ${warFile} "${tomcatServer}/deploy?path=/sabear_simplecutomerapp&update=true"
-                """
+        stage('Deploy to Tomcat') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${TOMCAT_CRED}", usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
+                    sh '''
+                    # Pick the latest WAR
+                    WAR_FILE=$(ls target/*.war | head -n 1)
+                    WAR_NAME=$(basename $WAR_FILE .war | tr '[:upper:]' '[:lower:]')
+
+                    echo "Deploying $WAR_FILE to Tomcat at context path /$WAR_NAME..."
+                    
+                    curl -u $TOMCAT_USER:$TOMCAT_PASS \
+                         -T $WAR_FILE \
+                         "http://54.145.142.96:8080/manager/text/deploy?path=/$WAR_NAME&update=true"
+                    '''
+                }
             }
         }
 
         stage('Slack Notification') {
-            slackSend(channel: slackChannel, color: 'good', message: "✅ Build & Deploy successful for feature-1.1 branch")
+            steps {
+                slackSend(
+                    channel: '#jenkins-integration',
+                    color: 'good',
+                    message: "Hi Team, Jenkins pipeline for *Simple Customer App* has finished successfully! ✅\nDeployed by: Imran Khan"
+                )
+            }
         }
+    }
 
-    } catch (err) {
-        slackSend(channel: slackChannel, color: 'danger', message: "❌ Build failed for feature-1.1 branch: ${err}")
-        throw err
+    post {
+        always {
+            echo 'Pipeline finished'
+        }
+        failure {
+            slackSend(
+                channel: '#jenkins-integration',
+                color: 'danger',
+                message: "⚠️ Jenkins pipeline for *Simple Customer App* failed! Please check."
+            )
+        }
     }
 }
