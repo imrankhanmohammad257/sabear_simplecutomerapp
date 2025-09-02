@@ -41,19 +41,22 @@ pipeline {
             }
         }
 
-        stage('Deploy to Tomcat') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: "${TOMCAT_CRED}", usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
-                    sh '''
-                    WAR_FILE=$(ls target/*.war | head -n 1)
-                    curl -u $TOMCAT_USER:$TOMCAT_PASS \
-                         -T $WAR_FILE \
-                         http://54.145.142.96:8080/manager/text/deploy?path=/hiring&update=true
-                    '''
-                }
-            }
+stage('Deploy to Tomcat') {
+    steps {
+        withCredentials([usernamePassword(credentialsId: "${TOMCAT_CRED}", usernameVariable: 'TOMCAT_USER', passwordVariable: 'TOMCAT_PASS')]) {
+            sh '''
+            WAR_FILE=$(ls target/*.war | head -n 1)
+            echo "Deploying $WAR_FILE to Tomcat..."
+            curl -u $TOMCAT_USER:$TOMCAT_PASS \
+                 -T $WAR_FILE \
+                 http://54.145.142.96:8080/manager/text/deploy?path=/hiring&update=true
+            '''
         }
+    }
+}
 
+
+        
         stage('Slack Notification') {
             steps {
                 slackSend(
